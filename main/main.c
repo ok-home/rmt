@@ -72,28 +72,36 @@ R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
 R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
 R1F,R1EOF
 };
-void IRAM_ATTR fn_tx_end(rmt_channel_t channel, void *arg)
-{
-    //ESP_LOGI("CB","CH %d",channel);
-    gpio_set_level(19,1);
-    gpio_set_level(19,0);
-    return;
-}
+
 static int cnt=0;
 #define RMT_LL_EVENT_TX_THRES(channel)    (1 << ((channel) + 24))
+#define RMT_LL_EVENT_TX_DONE(channel)     (1 << ((channel) * 3))
+
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
-    //ESP_LOGI("CB","CH %d",channel);
-    gpio_set_level(19,1);
-    gpio_set_level(19,0);
-    if(cnt++>10) {
-        rmt_tx_stop(RMT_TX_CHANNEL);
+    uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_CHANNEL)
+    if(status & RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL) ){
+    if(cnt++ > 10) {
+        //rmt_tx_stop(RMT_TX_CHANNEL);
         cnt=0;
         rmt_set_tx_thr_intr_en(RMT_TX_CHANNEL,false,258);
         rmt_set_tx_loop_mode(RMT_TX_CHANNEL, false);
         }
     rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL));
-    return;
+    gpio_set_level(19,1);
+    gpio_set_level(19,0);
+
+    }
+    if(status & RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL) ){
+        rmt_tx_stop(RMT_TX_CHANNEL);
+        rmt_set_tx_intr_en(RMT_TX_CHANNEL,false);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL));
+        gpio_set_level(19,1);
+        gpio_set_level(19,0);
+        gpio_set_level(19,1);
+        gpio_set_level(19,0);
+    }
+
 }
 /*
  * Initialize the RMT Tx channel
@@ -121,7 +129,7 @@ static void rmt_tx_init(void)
 
     rmt_isr_register(fn_tx_isr,NULL,ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED ,NULL);
 //    rmt_register_tx_end_callback(fn_tx_end,NULL);
-    rmt_set_tx_thr_intr_en(RMT_TX_CHANNEL,true,258);
+//    rmt_set_tx_thr_intr_en(RMT_TX_CHANNEL,true,258);
 }
 
 void app_main(void)
@@ -148,6 +156,7 @@ void app_main(void)
 
     rmt_fill_tx_items(RMT_TX_CHANNEL, morse_esp, sizeof(morse_esp) / sizeof(morse_esp[0]),0);
     rmt_set_tx_thr_intr_en(RMT_TX_CHANNEL,true,258);
+    rmt_set_tx_intr_en(RMT_TX_CHANNEL,true);
     rmt_set_tx_loop_mode(RMT_TX_CHANNEL, true);
     rmt_tx_start(RMT_TX_CHANNEL, true);
         vTaskDelay(20 / portTICK_PERIOD_MS);
