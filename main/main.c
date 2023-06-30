@@ -48,7 +48,7 @@ static const char *TAG = "example";
 #define TX_THRES sizeof(sample) / sizeof(sample[0])
 static const rmt_item32_t sample[] =
     {
-        /*
+    /*    
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
@@ -63,7 +63,7 @@ static const rmt_item32_t sample[] =
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        */
+    */    
         R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
         R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
         R1F, R1EOF};
@@ -113,7 +113,7 @@ static void rmt_tx_init(void)
 
     ESP_ERROR_CHECK(rmt_config(&config));
 
-    rmt_isr_register(fn_tx_isr, NULL, ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
+    rmt_isr_register(fn_tx_isr, NULL,/* ESP_INTR_FLAG_EDGE |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
 }
 
 void app_main(void)
