@@ -48,7 +48,7 @@ static const char *TAG = "example";
 #define TX_THRES sizeof(sample) / sizeof(sample[0])
 static const rmt_item32_t sample[] =
     {
-    /*    
+        
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
@@ -63,7 +63,7 @@ static const rmt_item32_t sample[] =
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
         R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-    */    
+       
         R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
         R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
         R1F, R1EOF};
@@ -72,6 +72,7 @@ static const rmt_item32_t sample[] =
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
     static uint32_t cnt = 0;
+    static int lvl=0;
     uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_CHANNEL);
     if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL))
     {
@@ -82,23 +83,23 @@ void IRAM_ATTR fn_tx_isr(void *arg)
 
             rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL));
             rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL), true);
-            cnt = 0;
+
         }
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL));
 
-        gpio_ll_set_level(&GPIO, 19, 1);
-        gpio_ll_set_level(&GPIO, 19, 0);
+        gpio_ll_set_level(&GPIO, 19, 1&lvl++);
+//        gpio_ll_set_level(&GPIO, 19, 0);
 
     }
     if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL))
     {
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL), false);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL));
-
-        gpio_ll_set_level(&GPIO, 19, 1);
-        gpio_ll_set_level(&GPIO, 19, 0);
-        gpio_ll_set_level(&GPIO, 19, 1);
-        gpio_ll_set_level(&GPIO, 19, 0);
+            cnt = 0;
+//        gpio_ll_set_level(&GPIO, 19, 1);
+//        gpio_ll_set_level(&GPIO, 19, 0);
+//        gpio_ll_set_level(&GPIO, 19, 1);
+//        gpio_ll_set_level(&GPIO, 19, 0);
     }
 }
 /*
@@ -110,10 +111,11 @@ static void rmt_tx_init(void)
     config.tx_config.loop_en = true;
     config.clk_div = 8;
     config.mem_block_num = 5;
+    config.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
 
     ESP_ERROR_CHECK(rmt_config(&config));
 
-    rmt_isr_register(fn_tx_isr, NULL,/* ESP_INTR_FLAG_EDGE |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
+    rmt_isr_register(fn_tx_isr, NULL,/* ESP_INTR_FLAG_SHARED |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
 }
 
 void app_main(void)
@@ -128,17 +130,17 @@ void app_main(void)
     rmt_tx_init();
 
     rmt_fill_tx_items(RMT_TX_CHANNEL, sample, sizeof(sample) / sizeof(sample[0]), 0);
-
+    int lvl=0;
     while (1)
     {
-        gpio_ll_set_level(&GPIO, 26, 1);
-        gpio_ll_set_level(&GPIO, 26, 0);
+        gpio_ll_set_level(&GPIO, 26, 1&lvl++);
+        //gpio_ll_set_level(&GPIO, 26, 0);
 
         rmt_ll_tx_set_limit(&RMT, RMT_TX_CHANNEL, TX_THRES);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL));
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL), true);
 
         rmt_ll_tx_enable_loop(&RMT, RMT_TX_CHANNEL, true);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
