@@ -17,17 +17,13 @@
 
 void logic_analyzer_ws_server(void);
 
-static const char *TAG = "example";
+static const char *TAG = "RMT 257*32";
 
-/*
-GPIO 22 23 - ONLY INPUT
-*/
+// pin & channel define
 #define RMT_TX_GPIO_PIXEL 18
 #define RMT_TX_PIXEL_CHANNEL 0
-
 #define RMT_TX_GPIO_HSYNC 19
 #define RMT_TX_HSYNC_CHANNEL 5
-
 #define RMT_TX_GPIO_VSYNC 21
 #define RMT_TX_VSYNC_CHANNEL 6
 
@@ -38,16 +34,18 @@ debug pin
 #define START_DBG_GPIO 27
 
 #define TX_PIX_THRES sizeof(pix_sample) / sizeof(pix_sample[0])
-#define HSYNC_CNT 8
+#define HSYNC_CNT 32
 
 #define TX_EOF_S 0
-
-#define PIX_HIGHT 5
-#define PIX_LOW 5
-
-#define PIX_H_HIGHT 10
-#define PIX_H_LOW 10
-
+// rmt div - clk=2 mHz
+#define CLK_80_DIV 40
+// pixels 0,5+0.5 mks
+#define PIX_HIGHT 1
+#define PIX_LOW 1
+// every 257 pixel 1+1 mks
+#define PIX_H_HIGHT 2
+#define PIX_H_LOW 2
+// define pixel samples
 #define PIX_S                            \
     {                                    \
         {                                \
@@ -72,7 +70,7 @@ debug pin
             }                            \
         }                                \
     }
-
+// define pixel samples array
 static const rmt_item32_t pix_sample[] =
     {
 
@@ -94,9 +92,9 @@ static const rmt_item32_t pix_sample[] =
         PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S,
         PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S,
         PIX_H, TX_EOF};
-
-#define HS_HIGHT (((PIX_HIGHT + PIX_LOW) * (TX_PIX_THRES-2))) + 1 
-#define HS_LOW (PIX_H_HIGHT + PIX_H_LOW) 
+// define h-string pulse ( every 257 pixel)
+#define HS_HIGHT (((PIX_HIGHT + PIX_LOW) * (TX_PIX_THRES - 2))) + 1
+#define HS_LOW (PIX_H_HIGHT + PIX_H_LOW)
 #define HS_S                           \
     {                                  \
         {                              \
@@ -113,18 +111,17 @@ static const rmt_item32_t pix_sample[] =
             }                          \
         }                              \
     }
-
+// define h-string sample array ( 32 string )
 static const rmt_item32_t h_sync_sample[] =
     {
-        /*
-            HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
-            HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
-            HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
-        */
-        HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
-        HS_V, TX_EOF};
 
-#define VS_HIGHT ((HS_HIGHT + HS_LOW) * (HSYNC_CNT+1)) - HS_LOW
+        HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
+        HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
+        HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
+        HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
+        HS_V, TX_EOF};
+// define v pulse - every 32 h-string
+#define VS_HIGHT ((HS_HIGHT + HS_LOW) * (HSYNC_CNT)) - HS_LOW 
 #define VS_LOW (HS_LOW)
 #define VS_S                           \
     {                                  \
@@ -134,48 +131,52 @@ static const rmt_item32_t h_sync_sample[] =
             }                          \
         }                              \
     }
+// define v-string sample array (pulse every 32 string )
 static const rmt_item32_t v_sync_sample[] =
     {
         VS_S, TX_EOF};
 
+// start frame 257*32
 static void IRAM_ATTR start_loop()
 {
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, true);
 };
+// stop frame ( stop loop - process last string )
 static void IRAM_ATTR stop_loop()
 {
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
 };
-
+// main irq handler
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
     static uint32_t cnt = 0;
     static int lvl = 0; // debug
     uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_PIXEL_CHANNEL);
-    if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL))
+    if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL)) // loop 257 pixel event
     {
-        if (cnt++ >= (HSYNC_CNT - 1))
+        if (cnt++ >= (HSYNC_CNT - 2)) // 31 string
         {
-            // rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
-            stop_loop();
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), false);
-
+            stop_loop(); // process last string
+            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), false); // disable thres int
+            // enable end frame int
             rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
             rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
         }
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
 
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);// debug
     }
-    if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL))
+    if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL)) // end of frame
     {
+        cnt = 0;
+        // disable int
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), false);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
-        cnt = 0;
+        // debug
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
@@ -189,7 +190,7 @@ static void rmt_tx_init(void *p)
 {
     rmt_config_t config_s = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_PIXEL, RMT_TX_PIXEL_CHANNEL);
     config_s.tx_config.loop_en = false;
-    config_s.clk_div = 8;
+    config_s.clk_div = CLK_80_DIV;
     config_s.mem_block_num = 5;
     config_s.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
     rmt_config(&config_s);
@@ -197,7 +198,7 @@ static void rmt_tx_init(void *p)
 
     rmt_config_t config_h = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_HSYNC, RMT_TX_HSYNC_CHANNEL);
     config_h.tx_config.loop_en = false;
-    config_h.clk_div = 8;
+    config_h.clk_div = CLK_80_DIV;
     config_h.mem_block_num = 1;
     config_h.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
     rmt_config(&config_h);
@@ -205,40 +206,39 @@ static void rmt_tx_init(void *p)
 
     rmt_config_t config_v = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_VSYNC, RMT_TX_VSYNC_CHANNEL);
     config_v.tx_config.loop_en = false;
-    config_v.clk_div = 8;
+    config_v.clk_div = CLK_80_DIV;
     config_v.mem_block_num = 1;
     config_v.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
     rmt_config(&config_v);
     rmt_fill_tx_items(RMT_TX_VSYNC_CHANNEL, v_sync_sample, sizeof(v_sync_sample) / sizeof(v_sync_sample[0]), 0);
-
+    // register rmt irq
     rmt_isr_register(fn_tx_isr, NULL, /* ESP_INTR_FLAG_SHARED |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
 
-    // vTaskDelete( NULL );
 }
 
 void app_main(void)
 {
     logic_analyzer_ws_server(); // internal Logic Analyzer // remove
+
     ESP_LOGI(TAG, "Configuring transmitter");
+    // debug pin
     gpio_reset_pin(IRQ_DBG_GPIO);
     gpio_set_direction(IRQ_DBG_GPIO, GPIO_MODE_OUTPUT);
     gpio_reset_pin(START_DBG_GPIO);
     gpio_set_direction(START_DBG_GPIO, GPIO_MODE_OUTPUT);
 
     rmt_tx_init(NULL);
-    // xTaskCreatePinnedToCore(rmt_tx_init,"rmt_tx_init",2048,NULL,5,NULL,1); // fn_tx_isr run on core1 (wifi run on core0)
 
-    int lvl = 0;
+    int lvl = 0; // debug
     while (1)
     {
-        gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++);
-
+        gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++); //debug
+        // enable 257 pix irq
         rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
 
-        // rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
-        start_loop();
-        vTaskDelay(20 / portTICK_PERIOD_MS);
+        start_loop(); //start frame
+        vTaskDelay(20 / portTICK_PERIOD_MS); 
     }
 }
