@@ -19,128 +19,210 @@ void logic_analyzer_ws_server(void);
 
 static const char *TAG = "example";
 
-#define RMT_TX_CHANNEL RMT_CHANNEL_0
+/*
+GPIO 22 23 - ONLY INPUT
+*/
+#define RMT_TX_GPIO_PIXEL 18
+#define RMT_TX_PIXEL_CHANNEL 0
 
-#define R1M                \
+#define RMT_TX_GPIO_HSYNC 19
+#define RMT_TX_HSYNC_CHANNEL 5
+
+#define RMT_TX_GPIO_VSYNC 21
+#define RMT_TX_VSYNC_CHANNEL 6
+
+/*
+debug pin 
+*/
+#define IRQ_DBG_GPIO 26
+#define START_DBG_GPIO 27
+
+#define TX_PIX_THRES sizeof(pix_sample) / sizeof(pix_sample[0])
+#define HSYNC_CNT 8 
+
+#define TX_EOF_S 0
+
+#define PIX_HIGHT 5
+#define PIX_LOW 5
+
+#define PIX_H_HIGHT 10
+#define PIX_H_LOW 10
+
+
+#define PIX_S                \
     {                      \
         {                  \
             {              \
-                5, 1, 5, 0 \
+                PIX_HIGHT, 1, PIX_LOW, 0 \
             }              \
         }                  \
     }
-#define R1F                  \
+#define PIX_H                  \
     {                        \
         {                    \
             {                \
-                10, 1, 10, 0 \
+                PIX_H_HIGHT, 1, PIX_H_LOW, 0 \
             }                \
         }                    \
     }
-#define R1EOF              \
+#define TX_EOF              \
     {                      \
         {                  \
             {              \
-                0, 1, 0, 0 \
+                 TX_EOF_S, 1,  TX_EOF_S, 0 \
             }              \
         }                  \
     }
-#define TX_THRES sizeof(sample) / sizeof(sample[0])
-static const rmt_item32_t sample[] =
+
+static const rmt_item32_t pix_sample[] =
     {
         
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
-        R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,R1M,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
+        PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,PIX_S,
        
-        R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
-        R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M, R1M,
-        R1F, R1EOF};
+        PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S,
+        PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S, PIX_S,
+        PIX_H, PIX_EOF};
 
+#define HS_HIGHT ((PIX_HIGHT+PIX_LOW)*(TX_PIX_THRES))
+#define HS_LOW (PIX_H_HIGHT+PIX_H_LOW)
+#define HS_S {{{HS_HIGHT,1,HS_LOW,0}}}
+
+static const rmt_item32_t h_sync_sample[] =
+{
+    /*
+        HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
+        HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
+        HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
+    */    
+        HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,HS_S,
+        HS_V,TX_EOF
+};
+
+#define VS_HIGHT ((HS_HIGHT+HS_LOW)*(HSYNC_CNT))
+#define VS_LOW (HS_HIGHT+HS_LOW)
+#define VS_S {{{VS_HIGHT,1,VS_LOW,0}}}
+static const rmt_item32_t v_sync_sample[] =
+{
+        VS_S,TX_EOF
+};
+
+static IRAM_ATTR start_loop()
+{
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, true);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, true);
+}
+static IRAM_ATTR stop_loop()
+{
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, false);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
+
+}
 
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
     static uint32_t cnt = 0;
-    static int lvl=0;
-    uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_CHANNEL);
-    if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL))
+    static int lvl=0; // debug
+    uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_PIXEL_CHANNEL);
+    if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL))
     {
-        if (cnt++ > 10)
+        if (cnt++ >= (HSYNC_CNT-1))
         {
-            rmt_ll_tx_enable_loop(&RMT, RMT_TX_CHANNEL, false);
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL), false);
+            //rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
+            stop_loop();
+            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), false);
 
-            rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL));
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL), true);
+            rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
+            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
 
         }
-        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL));
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
 
-        gpio_ll_set_level(&GPIO, 19, 1&lvl++);
-//        gpio_ll_set_level(&GPIO, 19, 0);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1&lvl++);
 
     }
-    if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL))
+    if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL))
     {
-        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL), false);
-        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_CHANNEL));
-            cnt = 0;
-//        gpio_ll_set_level(&GPIO, 19, 1);
-//        gpio_ll_set_level(&GPIO, 19, 0);
-//        gpio_ll_set_level(&GPIO, 19, 1);
-//        gpio_ll_set_level(&GPIO, 19, 0);
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), false);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
+        cnt = 0;
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1&lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1&lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1&lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1&lvl++);
     }
 }
 /*
  * Initialize the RMT Tx channel
  */
-static void rmt_tx_init(void)
+static void rmt_tx_init(void *p)
 {
-    rmt_config_t config = RMT_DEFAULT_CONFIG_TX(CONFIG_EXAMPLE_RMT_TX_GPIO, RMT_TX_CHANNEL);
-    config.tx_config.loop_en = true;
+    rmt_config_t config = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_PIXEL, RMT_TX_PIXEL_CHANNEL);
+    config.tx_config.loop_en = false;
     config.clk_div = 8;
     config.mem_block_num = 5;
     config.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
+    rmt_config(&config);
+    rmt_fill_tx_items(RMT_TX_PIXEL_CHANNEL, pix_sample, sizeof(pix_sample) / sizeof(pix_sample[0]), 0);
 
-    ESP_ERROR_CHECK(rmt_config(&config));
+    config = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_HSYNC, RMT_TX_HSYNC_CHANNEL);
+    config.tx_config.loop_en = false;
+    config.clk_div = 8;
+    config.mem_block_num = 1;
+    config.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
+    rmt_config(&config);
+    rmt_fill_tx_items(RMT_TX_HSYNC_CHANNEL, h_sync_sample, sizeof(h_sync_sample) / sizeof(h_sync_sample[0]), 0);
+
+    config = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_VSYNC, RMT_TX_VSYNC_CHANNEL);
+    config.tx_config.loop_en = false;
+    config.clk_div = 8;
+    config.mem_block_num = 1;
+    config.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
+    rmt_config(&config);
+    rmt_fill_tx_items(RMT_TX_VSYNC_CHANNEL, v_sync_sample, sizeof(v_sync_sample) / sizeof(v_sync_sample[0]), 0);
 
     rmt_isr_register(fn_tx_isr, NULL,/* ESP_INTR_FLAG_SHARED |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
+
+    //vTaskDelete( NULL );
 }
 
 void app_main(void)
 {
-    logic_analyzer_ws_server();
+    logic_analyzer_ws_server(); // internal Logic Analyzer // remove
     ESP_LOGI(TAG, "Configuring transmitter");
-    gpio_reset_pin(19);
-    gpio_set_direction(19, GPIO_MODE_OUTPUT);
-    gpio_reset_pin(26);
-    gpio_set_direction(26, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(IRQ_DBG_GPIO);
+    gpio_set_direction(IRQ_DBG_GPIO, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(START_DBG_GPIO);
+    gpio_set_direction(START_DBG_GPIO, GPIO_MODE_OUTPUT);
 
-    rmt_tx_init();
+    rmt_tx_init(NULL);
+    //xTaskCreatePinnedToCore(rmt_tx_init,"rmt_tx_init",2048,NULL,5,NULL,1); // fn_tx_isr run on core1 (wifi run on core0)
 
-    rmt_fill_tx_items(RMT_TX_CHANNEL, sample, sizeof(sample) / sizeof(sample[0]), 0);
     int lvl=0;
     while (1)
     {
-        gpio_ll_set_level(&GPIO, 26, 1&lvl++);
-        //gpio_ll_set_level(&GPIO, 26, 0);
+        gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1&lvl++);
 
-        rmt_ll_tx_set_limit(&RMT, RMT_TX_CHANNEL, TX_THRES);
-        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL));
-        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_CHANNEL), true);
+        rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
 
-        rmt_ll_tx_enable_loop(&RMT, RMT_TX_CHANNEL, true);
+        //rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
+        start_loop();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
