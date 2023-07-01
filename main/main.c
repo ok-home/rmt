@@ -38,13 +38,13 @@ debug pin
 
 #define TX_EOF_S 0
 // rmt div - clk=2 mHz
-#define CLK_80_DIV 40
+#define CLK_80_DIV 8
 // pixels 0,5+0.5 mks
-#define PIX_HIGHT 1
-#define PIX_LOW 1
+#define PIX_HIGHT 5
+#define PIX_LOW 5
 // every 257 pixel 1+1 mks
-#define PIX_H_HIGHT 2
-#define PIX_H_LOW 2
+#define PIX_H_HIGHT 10
+#define PIX_H_LOW 10
 // define pixel samples
 #define PIX_S                            \
     {                                    \
@@ -121,20 +121,29 @@ static const rmt_item32_t h_sync_sample[] =
         HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
         HS_V, TX_EOF};
 // define v pulse - every 32 h-string
-#define VS_HIGHT ((HS_HIGHT + HS_LOW) * (HSYNC_CNT)) - HS_LOW 
+#define VS_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT)) - HS_LOW )
 #define VS_LOW (HS_LOW)
+#define VS_DEL_16                       \
+    {                                  \
+        {                              \
+            {                          \
+                VS_HIGHT/16, 1, VS_HIGHT/16, 1 \
+            }                          \
+        }                              \
+    }
+
 #define VS_S                           \
     {                                  \
         {                              \
             {                          \
-                VS_HIGHT, 1, VS_LOW, 0 \
+                VS_HIGHT-(VS_HIGHT/16)*14, 1, VS_LOW, 0 \
             }                          \
         }                              \
     }
 // define v-string sample array (pulse every 32 string )
 static const rmt_item32_t v_sync_sample[] =
     {
-        VS_S, TX_EOF};
+       VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16, VS_S, TX_EOF};
 
 // start frame 257*32
 static void IRAM_ATTR start_loop()
