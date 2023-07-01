@@ -188,6 +188,9 @@ static void IRAM_ATTR start_loop()
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, true);
+
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, false);
 };
 // stop frame ( stop loop - process last string )
 static void IRAM_ATTR stop_loop()
@@ -200,34 +203,26 @@ static void IRAM_ATTR stop_loop()
 // main irq handler
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
-    static uint32_t cnt = 0;
     static int lvl = 0; // debug
-    uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_PIXEL_CHANNEL);
-    if (status & RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL)) // loop 257 pixel event
+    uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_LOOP_RESET_CHANNEL);
+    if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL))
     {
-        if (cnt++ >= (HSYNC_CNT - 2)) // 31 string
-        {
-            stop_loop(); // process last string
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), false); // disable thres int
-            // enable end frame int
-            rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
-        }
-        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
+        stop_loop(); // process last string
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL), false);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL));
+
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
 
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);// debug
     }
+    status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_PIXEL_CHANNEL);
     if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL)) // end of frame
     {
-        cnt = 0;
-        // disable int
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), false);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
-        // debug
+
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
-        //gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
     }
 }
 /*
@@ -292,9 +287,12 @@ void app_main(void)
         gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++); //debug
         // enable 257 pix irq
 
-        rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
-        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
-        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
+        //rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
+        //rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
+        //rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
+
+            rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL));
+            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL), true);
 
 
 
