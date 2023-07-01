@@ -26,6 +26,9 @@ static const char *TAG = "RMT 257*32";
 #define RMT_TX_HSYNC_CHANNEL 5
 #define RMT_TX_GPIO_VSYNC 21
 #define RMT_TX_VSYNC_CHANNEL 6
+#define RMT_TX_GPIO_LOOP_RESET 25
+#define RMT_TX_LOOP_RESET_CHANNEL 7
+
 
 /*
 debug pin
@@ -145,12 +148,46 @@ static const rmt_item32_t v_sync_sample[] =
     {
        VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16, VS_S, TX_EOF};
 
+
+
+// define loop reset - every 31 h-string
+#define LR_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT-1))  )
+#define LR_LOW (HS_LOW)
+#define LR_DEL_16                       \
+    {                                  \
+        {                              \
+            {                          \
+                LR_HIGHT/16, 1, LR_HIGHT/16, 1 \
+            }                          \
+        }                              \
+    }
+
+#define LR_S                           \
+    {                                  \
+        {                              \
+            {                          \
+                LR_HIGHT-(LR_HIGHT/16)*14, 1, LR_LOW, 0 \
+            }                          \
+        }                              \
+    }
+// define v-string sample array (pulse every 32 string )
+static const rmt_item32_t loop_reset_sample[] =
+    {
+       LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16, LR_S, TX_EOF};
+
+
+
+
+
+
+
 // start frame 257*32
 static void IRAM_ATTR start_loop()
 {
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, true);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, true);
 };
 // stop frame ( stop loop - process last string )
 static void IRAM_ATTR stop_loop()
@@ -158,6 +195,7 @@ static void IRAM_ATTR stop_loop()
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
+    rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, false);
 };
 // main irq handler
 void IRAM_ATTR fn_tx_isr(void *arg)
@@ -189,7 +227,7 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        //gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
     }
 }
 /*
@@ -220,6 +258,16 @@ static void rmt_tx_init(void *p)
     config_v.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
     rmt_config(&config_v);
     rmt_fill_tx_items(RMT_TX_VSYNC_CHANNEL, v_sync_sample, sizeof(v_sync_sample) / sizeof(v_sync_sample[0]), 0);
+
+    rmt_config_t config_lr = RMT_DEFAULT_CONFIG_TX(RMT_TX_GPIO_LOOP_RESET, RMT_TX_LOOP_RESET_CHANNEL);
+    config_lr.tx_config.loop_en = false;
+    config_lr.clk_div = CLK_80_DIV;
+    config_lr.mem_block_num = 1;
+    config_lr.tx_config.idle_level = RMT_IDLE_LEVEL_HIGH;
+    rmt_config(&config_lr);
+    rmt_fill_tx_items(RMT_TX_LOOP_RESET_CHANNEL, loop_reset_sample, sizeof(loop_reset_sample) / sizeof(loop_reset_sample[0]), 0);
+
+
     // register rmt irq
     rmt_isr_register(fn_tx_isr, NULL, /* ESP_INTR_FLAG_SHARED |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
 
@@ -243,11 +291,14 @@ void app_main(void)
     {
         gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++); //debug
         // enable 257 pix irq
+
         rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
 
+
+
         start_loop(); //start frame
-        vTaskDelay(20 / portTICK_PERIOD_MS); 
+        vTaskDelay(30 / portTICK_PERIOD_MS); 
     }
 }
