@@ -15,6 +15,8 @@
 #include "hal/rmt_ll.h"
 #include "hal/gpio_ll.h"
 
+#include "driver/pulse_cnt.h"
+
 void logic_analyzer_ws_server(void);
 
 static const char *TAG = "RMT 257*32";
@@ -29,7 +31,8 @@ static const char *TAG = "RMT 257*32";
 #define RMT_TX_GPIO_LOOP_RESET 25
 #define RMT_TX_LOOP_RESET_CHANNEL 7
 
-
+portMUX_TYPE rmt_mux = portMUX_INITIALIZER_UNLOCKED;
+TaskHandle_t rmt_task_handle = NULL;
 /*
 debug pin
 */
@@ -40,7 +43,7 @@ debug pin
 #define HSYNC_CNT 32
 
 #define TX_EOF_S 0
-// rmt div - clk=2 mHz
+// rmt div - clk=10 mHz
 #define CLK_80_DIV 8
 // pixels 0,5+0.5 mks
 #define PIX_HIGHT 5
@@ -124,66 +127,59 @@ static const rmt_item32_t h_sync_sample[] =
         HS_S, HS_S, HS_S, HS_S, HS_S, HS_S, HS_S,
         HS_V, TX_EOF};
 // define v pulse - every 32 h-string
-#define VS_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT)) - HS_LOW )
+#define VS_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT)) - HS_LOW)
 #define VS_LOW (HS_LOW)
-#define VS_DEL_16                       \
-    {                                  \
-        {                              \
-            {                          \
-                VS_HIGHT/16, 1, VS_HIGHT/16, 1 \
-            }                          \
-        }                              \
+#define VS_DEL_16                                  \
+    {                                              \
+        {                                          \
+            {                                      \
+                VS_HIGHT / 16, 1, VS_HIGHT / 16, 1 \
+            }                                      \
+        }                                          \
     }
 
-#define VS_S                           \
-    {                                  \
-        {                              \
-            {                          \
-                VS_HIGHT-(VS_HIGHT/16)*14, 1, VS_LOW, 0 \
-            }                          \
-        }                              \
+#define VS_S                                                  \
+    {                                                         \
+        {                                                     \
+            {                                                 \
+                VS_HIGHT - (VS_HIGHT / 16) * 14, 1, VS_LOW, 0 \
+            }                                                 \
+        }                                                     \
     }
 // define v-string sample array (pulse every 32 string )
 static const rmt_item32_t v_sync_sample[] =
     {
-       VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16,VS_DEL_16, VS_S, TX_EOF};
-
-
+        VS_DEL_16, VS_DEL_16, VS_DEL_16, VS_DEL_16, VS_DEL_16, VS_DEL_16, VS_DEL_16, VS_S, TX_EOF};
 
 // define loop reset - every 31 h-string
-#define LR_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT-1))  )
+#define LR_HIGHT (((HS_HIGHT + HS_LOW) * (HSYNC_CNT - 1)))
 #define LR_LOW (HS_LOW)
-#define LR_DEL_16                       \
-    {                                  \
-        {                              \
-            {                          \
-                LR_HIGHT/16, 1, LR_HIGHT/16, 1 \
-            }                          \
-        }                              \
+#define LR_DEL_16                                  \
+    {                                              \
+        {                                          \
+            {                                      \
+                LR_HIGHT / 16, 1, LR_HIGHT / 16, 1 \
+            }                                      \
+        }                                          \
     }
 
-#define LR_S                           \
-    {                                  \
-        {                              \
-            {                          \
-                LR_HIGHT-(LR_HIGHT/16)*14, 1, LR_LOW, 0 \
-            }                          \
-        }                              \
+#define LR_S                                                  \
+    {                                                         \
+        {                                                     \
+            {                                                 \
+                LR_HIGHT - (LR_HIGHT / 16) * 14, 1, LR_LOW, 0 \
+            }                                                 \
+        }                                                     \
     }
 // define v-string sample array (pulse every 32 string )
 static const rmt_item32_t loop_reset_sample[] =
     {
-       LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16,LR_DEL_16, LR_S, TX_EOF};
-
-
-
-
-
-
+        LR_DEL_16, LR_DEL_16, LR_DEL_16, LR_DEL_16, LR_DEL_16, LR_DEL_16, LR_DEL_16, LR_S, TX_EOF};
 
 // start frame 257*32
 static void IRAM_ATTR start_loop()
 {
+    portENTER_CRITICAL(&rmt_mux);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, true);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, true);
@@ -191,18 +187,22 @@ static void IRAM_ATTR start_loop()
 
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, false);
+    portEXIT_CRITICAL(&rmt_mux);
 };
 // stop frame ( stop loop - process last string )
 static void IRAM_ATTR stop_loop()
 {
+        //portENTER_CRITICAL(&rmt_mux);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_PIXEL_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_HSYNC_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_VSYNC_CHANNEL, false);
     rmt_ll_tx_enable_loop(&RMT, RMT_TX_LOOP_RESET_CHANNEL, false);
+        //portEXIT_CRITICAL(&rmt_mux);
 };
 // main irq handler
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     static int lvl = 0; // debug
     uint32_t status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_LOOP_RESET_CHANNEL);
     if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL))
@@ -214,7 +214,7 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
 
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);// debug
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++); // debug
     }
     status = rmt_ll_tx_get_interrupt_status(&RMT, RMT_TX_PIXEL_CHANNEL);
     if (status & RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL)) // end of frame
@@ -223,6 +223,10 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
 
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+
+        vTaskNotifyGiveFromISR(rmt_task_handle,&xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+
     }
 }
 /*
@@ -262,11 +266,71 @@ static void rmt_tx_init(void *p)
     rmt_config(&config_lr);
     rmt_fill_tx_items(RMT_TX_LOOP_RESET_CHANNEL, loop_reset_sample, sizeof(loop_reset_sample) / sizeof(loop_reset_sample[0]), 0);
 
-
     // register rmt irq
-    rmt_isr_register(fn_tx_isr, NULL, /* ESP_INTR_FLAG_SHARED |*/ ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
-
+    rmt_isr_register(fn_tx_isr, NULL,  ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
+    while(1){
+    vTaskDelay(10);
+    }
 }
+
+pcnt_unit_handle_t pcnt_unit = NULL;
+pcnt_channel_handle_t pcnt_chan = NULL;
+// samples counter - debug count ( gpio short 18-22)
+void pcnt_init(void)
+{
+    pcnt_unit_config_t unit_config = {
+        .high_limit = 16000,
+        .low_limit = -16000,
+    };
+    ESP_ERROR_CHECK(pcnt_new_unit(&unit_config, &pcnt_unit));
+    pcnt_chan_config_t chan_config = {
+        .edge_gpio_num = 22,
+        .level_gpio_num = -1,
+    };
+    ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_config, &pcnt_chan));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(pcnt_chan, PCNT_CHANNEL_EDGE_ACTION_HOLD, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+    ESP_ERROR_CHECK(pcnt_unit_enable(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(pcnt_unit));
+}
+void pcnt_chk(void)
+{
+    static int chk_cnt = 0;     // debug
+    static int chk_cnt_pre = 0; // debug
+
+    ESP_ERROR_CHECK(pcnt_unit_stop(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &chk_cnt));
+    if (chk_cnt != chk_cnt_pre)
+    {
+        ESP_LOGI("CNT", "cnt = %d precnt=%d delta=%d", chk_cnt, chk_cnt_pre, chk_cnt - chk_cnt_pre);
+        chk_cnt_pre = chk_cnt;
+    }
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(pcnt_unit));
+    ESP_ERROR_CHECK(pcnt_unit_start(pcnt_unit));
+}
+
+void rmt_task( void *p)
+{
+    xTaskCreatePinnedToCore(rmt_tx_init,"rmt init",4000,NULL,5,NULL,1);
+    vTaskDelay(10); //wait init done
+
+    pcnt_init(); //debug
+
+    int lvl = 0; // debug
+
+    while (1)
+    {
+        gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++); // debug
+        pcnt_chk(); //debug
+
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL));
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL), true);
+
+        start_loop(); // start frame
+        ulTaskNotifyTake(pdTRUE,portMAX_DELAY ); // irq eof
+
+    }
+}
+
 
 void app_main(void)
 {
@@ -279,24 +343,5 @@ void app_main(void)
     gpio_reset_pin(START_DBG_GPIO);
     gpio_set_direction(START_DBG_GPIO, GPIO_MODE_OUTPUT);
 
-    rmt_tx_init(NULL);
-
-    int lvl = 0; // debug
-    while (1)
-    {
-        gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & lvl++); //debug
-        // enable 257 pix irq
-
-        //rmt_ll_tx_set_limit(&RMT, RMT_TX_PIXEL_CHANNEL, TX_PIX_THRES);
-        //rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL));
-        //rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_THRES(RMT_TX_PIXEL_CHANNEL), true);
-
-            rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL));
-            rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_LOOP_RESET_CHANNEL), true);
-
-
-
-        start_loop(); //start frame
-        vTaskDelay(30 / portTICK_PERIOD_MS); 
-    }
+    xTaskCreatePinnedToCore(rmt_task,"rmt task",4000,NULL,5,&rmt_task_handle,tskNO_AFFINITY);
 }
