@@ -67,11 +67,12 @@
     </div>
     <div class="chs" id="config">
     </div>
-    <div class="chs" id="wifi">
-    </div>
     <div id="datalist">
     </div>
-    <div id="EchoString" class="logstr">ОШИБКА ПЕРЕДАЧИ</div>
+    <div id="EchoString" class="logstr"></div>
+    <div id="LogArea">
+        <textarea id="logtext" rows="4" cols="50"></textarea>
+    </div>
 </body>
 
 <template id="tpl_list">
@@ -118,7 +119,8 @@
             checkCfgData,
             startMeashure,
             zoomToFit,
-            saveByteArray
+            saveByteArray,
+            getHWParam
         ];
 
         let ins = document.querySelector('#' + row.hdrID) // куда вставлять шаблон
@@ -151,13 +153,13 @@
     const y_bord = 50;
     const zoom_inc = 0.025;
     const min_cnt = 32;
-    const max_channels = 16;
 
     const color_black = "black";
     const color_time = "blue";
     const color_left_border = "red";
 
     let statusstr = document.getElementById("EchoString");
+    let textstr = document.getElementById("logtext");
     let canvas = document.getElementById("myCanvas");
     let ctx = canvas.getContext("2d", { willReadFrequently: true });
 
@@ -169,6 +171,7 @@
     let y_canvas = canvas.height;
     let max_cnt = 10000;
     let curr_cnt = max_cnt;
+    let max_channels = 16;
     let clock_cnt = 1000000; // clock count HZ
     let clock_time_sek = 1 / clock_cnt;// clock time
     let curr_canvas_x_point = 0;
@@ -180,7 +183,7 @@
     let mark_click_array_point = curr_array_start_point;
     var analyzerData = new Uint16Array(max_cnt);
 </script>
-<script> //analyser drawing
+<script> //analyzer drawing
     function drawLine(l_arr, l_channelName, l_channel, l_channels, l_start, l_cnt) {
         let round_floor = l_start - Math.floor(l_start);  // round err
         l_start = Math.floor(l_start);                  // to int
@@ -249,7 +252,7 @@
         if (l_channel == -1) // top border
         {
             let label_step = 0;
-            let tmp = 10000;
+            let tmp = 10000000; //10000 ?
             for (; ; tmp /= 10) {
                 if (l_cnt / tmp >= 10) { label_step = tmp; break; }
                 if (l_cnt / (tmp / 2) >= 10) { label_step = tmp / 2; break; }
@@ -289,7 +292,7 @@
             drawLine(l_arr, cfgCntCh[idx], idx, l_channels, l_start, l_cnt);
         }
         drawLine(l_arr, -1, -1, l_channels, l_start, l_cnt);//draw top border
-        imgMarker = ctx.getImageData(x_bord + marker_canvas_x_point - 50, 30, 100, 20, { willReadFrequently: true });
+        imgMarker = ctx.getImageData(x_bord + marker_canvas_x_point - 100, 30, 200, 20, { willReadFrequently: true });
         drawTimeMarker();
     }
     function drawXMarker() {
@@ -306,6 +309,18 @@
     }
 </script>
 <script> // event & validate html config data
+    function getHWParam(e) {
+        if (checkData(this)) {
+            let tmp = document.getElementById("chn00");
+            let str = JSON.stringify({ rowID: tmp.id, rowVal: tmp.value });
+            socket.send(str);
+            tmp = document.getElementById("ram00");
+            str = JSON.stringify({ rowID: tmp.id, rowVal: tmp.value });
+            socket.send(str);
+            str = "endhwr"
+            socket.send(str);
+        }
+    }
     function checkCfgData(e) {
         checkData(this);
     }
@@ -357,6 +372,7 @@
         drawLineS(analyzerData, max_channels, 0, max_cnt);
     }
     function saveByteArray() {
+        // 4 channels data save as 8 channels data
         let a = document.createElement("a");
         document.body.appendChild(a);
         a.style = "display: none";
@@ -384,10 +400,32 @@
         {
             //if (typeof data != "string") {
             if (data instanceof ArrayBuffer) {
-                //analyzerData = data; //byte data
-                analyzerData = new Uint16Array(data);
-                //console.log("bin " + analyzerData.length);
-                statusstr.innerHTML = "Received " + analyzerData.length + " samples";
+                // check max_channel
+                let tmpl = document.querySelector('#config').querySelectorAll('input');
+                if (tmpl.length > 20) // 16 ch
+                {
+                    max_channels = 16;
+                    analyzerData = new Uint16Array(data);
+                }
+                else if (tmpl.length > 12) // 8 ch
+                {
+                    max_channels = 8;
+                    analyzerData = new Uint8Array(data);
+                }
+                else // 4 ch
+                {
+                    max_channels = 4; // 8 
+                    //analyzerData = new Uint8Array(data);
+                    let tmpArr = new Uint8Array(data);
+                    analyzerData = new Uint8Array(tmpArr.length * 2);
+                    let outIdx = 0;
+                    for (let inIdx = 0; inIdx < tmpArr.length; inIdx++) {
+                        analyzerData[outIdx++] = tmpArr[inIdx] & 0xf;
+                        analyzerData[outIdx++] = (tmpArr[inIdx] >> 4) & 0xf;
+                    }
+                }
+                //statusstr.innerHTML = "Received " + analyzerData.length + " samples";
+                textstr.value = "Received " + analyzerData.length + " samples" + "\n" + textstr.value;
                 curr_canvas_x_point = 0;
                 curr_array_start_point = 0;
                 click_array_point = curr_array_start_point;//zoom point
@@ -397,11 +435,17 @@
                     document.getElementById("beg00").value = "Start";
                     drawLineS(analyzerData, max_channels, 0, max_cnt);
                 }
-
             } else {
                 // text frame
-                //console.log("text " + data);
-                statusstr.innerHTML = data;
+                //statusstr.innerHTML = data;
+                textstr.value = data + "\n" + textstr.value;
+                if (data == "redraw") {
+                    //statusstr.innerHTML = "redraw logic analyzer config";
+                    //socket.close();
+                    removeAll();
+                    return;
+                }
+
             }
         }
     }
@@ -423,13 +467,7 @@
     }
     function data_input(obj) {
         if (obj.rowID) {
-            if (obj.rowID == "endcfg") {
-                //console.log("end cfg recieve");
-                statusstr.innerHTML = "recieved logic analyzer config";
-                return;
-            }
             document.querySelector('#' + obj.rowID).val = obj.rowVal;
-
             if (obj.rowID.indexOf('smp00') == 0) {
                 if (Number(obj.rowVal) > 0) {
                     max_cnt = curr_cnt = Number(obj.rowVal);
@@ -452,13 +490,14 @@
         let tick_mul = 0;
         let tick_pre = "";
 
+        //if (clock_time_sek >= 1e-11) { tick_mul = 1e9; tick_pre = " nS"; }
         if (clock_time_sek >= 1e-8) { tick_mul = 1e6; tick_pre = " mkS"; }
         if (clock_time_sek >= 1e-5) { tick_mul = 1e3; tick_pre = " mS"; }
         if (clock_time_sek >= 1e-2) { tick_mul = 1e0; tick_pre = " S"; }
 
         ctx.textAlign = "right";
         ctx.fillStyle = color_time;
-        ctx.fillText((tick * clock_time_sek * tick_mul).toFixed(3), x, y);
+        ctx.fillText((tick * clock_time_sek * tick_mul).toFixed(4), x, y);
         ctx.textAlign = "left";
         ctx.fillText(tick_pre, x, y);
         ctx.fillStyle = color_black;
@@ -481,9 +520,9 @@
     canvas.addEventListener('mousemove', function (evt) {
         curr_canvas_x_point = evt.offsetX < x_bord ? 0 : evt.offsetX - x_bord;
         click_array_point = Math.round(curr_array_start_point + curr_cnt * (curr_canvas_x_point / (x_canvas - x_bord)));
-        ctx.putImageData(imgMarker, x_bord + marker_canvas_x_point - 50, 30)
+        ctx.putImageData(imgMarker, x_bord + marker_canvas_x_point - 100, 30); //-50
         marker_canvas_x_point = evt.offsetX < x_bord ? 0 : evt.offsetX - x_bord;
-        imgMarker = ctx.getImageData(x_bord + marker_canvas_x_point - 50, 30, 100, 20, { willReadFrequently: true });
+        imgMarker = ctx.getImageData(x_bord + marker_canvas_x_point - 100, 30, 200, 20, { willReadFrequently: true });//-50 100
         drawTimeMarker();
     }, false);
     canvas.addEventListener('wheel', function (evt) {
@@ -506,21 +545,39 @@
     var socket = new WebSocket(wsHostStr);
     socket.binaryType = "arraybuffer";
     socket.onopen = function () {
-        statusstr.innerHTML = "Соединение установлено";
+        //statusstr.innerHTML = "Соединение установлено";
+        textstr.value = "Соединение установлено" + "\n" + textstr.value;
         curr_cnt = max_cnt;
         drawLineS(analyzerData, max_channels, curr_array_start_point, curr_cnt);// 
     };
     socket.onclose = function (event) {
-        statusstr.innerHTML = "Соединение закрыто";
-        statusstr.innerHTML += ' код: ' + event.code + ' причина: ' + event.reason;
+        //statusstr.innerHTML = "Соединение закрыто";
+        //statusstr.innerHTML += ' код: ' + event.code + ' причина: ' + event.reason;
+        textstr.value = "Соединение закрыто" + "\n" + textstr.value;
+        document.location.reload();
     };
-    socket.onerror = function () {
-        statusstr.innerHTML = "Ошибка сокета";
+    socket.onerror = function (event) {
+        //statusstr.innerHTML = "Ошибка сокета";
+        textstr.value = "Ошибка сокета" + "\n" + textstr.value;
     };
 
     socket.onmessage = function (event) {
         receiveWsData(event.data);
     };
+
+    // test without reboot - remove cfg+datalist
+    function removeAll() {
+        let tmpl = document.querySelector('#config').querySelectorAll('.cl1');
+        for (let tmp of tmpl) {
+            tmp.remove();
+        }
+        tmpl = document.querySelector('#datalist').querySelectorAll('datalist');
+        for (let tmp of tmpl) {
+            tmp.remove();
+        }
+        socket.send("clrdiv");
+    }
+
 
     //https://involta.ru/tools/validator-html/
 </script>

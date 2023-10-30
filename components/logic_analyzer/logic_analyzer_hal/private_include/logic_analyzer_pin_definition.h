@@ -1,32 +1,4 @@
 #pragma once
-
-// definition test sample
-// output pin ledc example
-#define LEDC_OUTPUT_IO (18)
-// output pin gpio blink example 
-#define GPIO_BLINK (19)
-// input wired example pins
-#define IN_PORT_1 (22)
-#define IN_PORT_2 (23)
-// i2c sample example pins
-#define I2C_PIN_SDA (26)
-#define I2C_PIN_SCL (27)
-
-#define GPIO_IRQ_PIN_26 (26)
-#define GPIO_IRQ_PIN_27 (27)
-
-
-
-#define LA_CLK_SAMPLE_RATE 80000000
-#define LA_MAX_SAMPLE_RATE 40000000
-#define LA_MIN_SAMPLE_RATE 5000
-
-#define LA_MAX_PIN 16
-#define LA_MIN_GPIO -1
-#define LA_MAX_GPIO 39
-#define LA_MAX_SAMPLE_CNT 32764
-#define LA_MIN_SAMPLE_CNT 100
-
 // define logic analyzer channel pin
 // -1 - pin disabled
 #ifdef CONFIG_ANALYZER_USE_PORT_ASSIGN
@@ -51,17 +23,19 @@
 #define LA_PIN_EDGE (CONFIG_ANALYZER_TRIG_EDGE)
 #define LA_SAMPLE_COUNT (CONFIG_ANALYZER_SAMPLES_COUNT)
 #define LA_SAMPLE_RATE (CONFIG_ANALYZER_SAMPLE_RATE)
-#define LA_DEFAULT_TiMEOUT (CONFIG_ANALYZER_TIMEOUT*100)
+#define LA_DEFAULT_TiMEOUT (CONFIG_ANALYZER_TIMEOUT * 100)
+#define LA_ANALYZER_CHANNELS (CONFIG_ANALYZER_CHANNELS)
+#define LA_ANALYZER_PSRAM (CONFIG_ANALYZER_PSRAM)
 
 #else
 
-#define LA_PIN_0 (IN_PORT_1)
-#define LA_PIN_1 (LEDC_OUTPUT_IO)
-#define LA_PIN_2 (IN_PORT_2)
-#define LA_PIN_3 (GPIO_BLINK)
+#define LA_PIN_0 (-1)
+#define LA_PIN_1 (-1)
+#define LA_PIN_2 (-1)
+#define LA_PIN_3 (-1)
 #define LA_PIN_4 (-1)
-#define LA_PIN_5 (GPIO_IRQ_PIN_26)
-#define LA_PIN_6 (GPIO_IRQ_PIN_27)
+#define LA_PIN_5 (-1)
+#define LA_PIN_6 (-1)
 #define LA_PIN_7 (-1)
 #define LA_PIN_8 (-1)
 #define LA_PIN_9 (-1)
@@ -76,11 +50,7 @@
 #define LA_SAMPLE_COUNT (1000)
 #define LA_SAMPLE_RATE (1000000)
 #define LA_DEFAULT_TiMEOUT (2000)
+#define LA_ANALYZER_CHANNELS (16)
+#define LA_ANALYZER_PSRAM (0)
+
 #endif
-
-
-
-
-
-
-

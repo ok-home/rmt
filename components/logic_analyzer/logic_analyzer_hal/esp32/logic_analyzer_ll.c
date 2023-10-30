@@ -37,29 +37,14 @@ typedef struct div_68
     uint16_t div_6;
 } div_68_t;
 
-typedef enum
-{
-    /* camera sends byte sequence: s1, s2, s3, s4, ...
-     * fifo receives: 00 s1 00 s2, 00 s2 00 s3, 00 s3 00 s4, ...
-     */
-    SM_0A0B_0B0C = 0,
-    /* camera sends byte sequence: s1, s2, s3, s4, ...
-     * fifo receives: 00 s1 00 s2, 00 s3 00 s4, ...
-     */
-    SM_0A0B_0C0D = 1,
-    /* camera sends byte sequence: s1, s2, s3, s4, ...
-     * fifo receives: 00 s1 00 00, 00 s2 00 00, 00 s3 00 00, ...
-     */
-    SM_0A00_0B00 = 3,
-} i2s_sampling_mode_t;
-
 static intr_handle_t isr_handle;
-//  trigger isr handle
+//  trigger isr handle -> triggered start
 void IRAM_ATTR la_ll_trigger_isr(void *pin)
 {
     gpio_matrix_in(0x38, I2SXI_V_SYNC_IDX, false);
     gpio_intr_disable((int)pin);
 }
+// dma eof isr -> end transfer
 static void IRAM_ATTR la_ll_dma_isr(void *handle)
 {
     BaseType_t HPTaskAwoken = pdFALSE;
@@ -71,7 +56,6 @@ static void IRAM_ATTR la_ll_dma_isr(void *handle)
     I2SX.int_clr.val = status.val;
     if (status.in_suc_eof)
     {
-
         vTaskNotifyGiveFromISR((TaskHandle_t)handle, &HPTaskAwoken);
     }
     if (HPTaskAwoken == pdTRUE)
@@ -79,6 +63,7 @@ static void IRAM_ATTR la_ll_dma_isr(void *handle)
         portYIELD_FROM_ISR();
     }
 }
+// reset i2s & dma on config
 static void logic_analyzer_ll_reset()
 {
     I2SX.conf.rx_reset = 1;
@@ -92,6 +77,7 @@ static void logic_analyzer_ll_reset()
     I2SX.lc_conf.ahbm_rst = 1;
     I2SX.lc_conf.ahbm_rst = 0;
 }
+// set i2s mode lcd/cam mode, master receive, parallel 16 bit
 static void logic_analyzer_ll_set_mode()
 {
     I2SX.conf.val = 0;
@@ -109,7 +95,8 @@ static void logic_analyzer_ll_set_mode()
 //
 // esp32 RefMan - 12.5
 // In the LCD mode, the frequency of WS is half of fBCK
-// LA_CLK_SAMPLE_RATE = pll160/2 = 80 000 000 hz
+// LA_HW_CLK_SAMPLE_RATE = pll160/2 = 80 000 000 hz
+// convert sample rate to i2s register dividers
 //
 static div_68_t logic_analyzer_ll_convert_sample_rate(int sample_rate)
 {
@@ -120,7 +107,7 @@ static div_68_t logic_analyzer_ll_convert_sample_rate(int sample_rate)
     int delta_div_6 = 0;
     int delta = 0;
     int mindelta = 32767;
-    int cnt = LA_CLK_SAMPLE_RATE / sample_rate;
+    int cnt = LA_HW_CLK_SAMPLE_RATE / sample_rate;
     // extra div div_8+(div_8a/div_8b)
     // int div_8a = 1;
     // int div_8b = 0;
@@ -164,6 +151,7 @@ static div_68_t logic_analyzer_ll_convert_sample_rate(int sample_rate)
     }
     return ret;
 }
+// set i2s dividers
 static void logic_analyzer_ll_set_clock(int sample_rate)
 {
     div_68_t ldiv = logic_analyzer_ll_convert_sample_rate(sample_rate);
@@ -173,13 +161,14 @@ static void logic_analyzer_ll_set_clock(int sample_rate)
     I2SX.clkm_conf.clkm_div_num = ldiv.div_8;          // clk div_8
     I2SX.sample_rate_conf.rx_bck_div_num = ldiv.div_6; // bclk div_6
 }
-static void logic_analyzer_ll_set_pin(int *data_pins)
+// set i2s pins as input, vsync, hsync, henable as const to stop transfer mode
+static void logic_analyzer_ll_set_pin(int *data_pins, int channels)
 {
 
-    vTaskDelay(5);
+    // vTaskDelay(5);
 #ifndef SEPARATE_MODE_LOGIC_ANALIZER
 
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < channels; i++)
     {
         if (data_pins[i] < 0) // pin disable - already 0
         {
@@ -193,7 +182,7 @@ static void logic_analyzer_ll_set_pin(int *data_pins)
     }
 #else
     // external not tested ??
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < channels; i++)
     {
         if (data_pins[i] < 0) // pin disable - already 0
         {
@@ -216,7 +205,8 @@ static void logic_analyzer_ll_set_pin(int *data_pins)
     gpio_matrix_in(0x38, I2SXI_H_SYNC_IDX, false);
     gpio_matrix_in(0x38, I2SXI_H_ENABLE_IDX, false);
 }
-void logic_analyzer_ll_config(int *data_pins, int sample_rate, la_frame_t *frame)
+// start i2s module, set sample rate, sample count, set dma, prestart -> transfer started from vsync
+void logic_analyzer_ll_config(int *data_pins, int sample_rate, int channels, la_frame_t *frame)
 {
     // Enable and configure I2S peripheral
     periph_module_enable(PERIPH_I2SX_MODULE);
@@ -225,7 +215,7 @@ void logic_analyzer_ll_config(int *data_pins, int sample_rate, la_frame_t *frame
     logic_analyzer_ll_reset();
     logic_analyzer_ll_set_mode();
     logic_analyzer_ll_set_clock(sample_rate);
-    logic_analyzer_ll_set_pin(data_pins);
+    logic_analyzer_ll_set_pin(data_pins, channels);
     // set dma descriptor
     I2SX.rx_eof_num = frame->fb.len / sizeof(uint32_t); // count in 32 bit word
     I2SX.in_link.addr = ((uint32_t) & (frame->dma[0]));
@@ -234,15 +224,17 @@ void logic_analyzer_ll_config(int *data_pins, int sample_rate, la_frame_t *frame
     I2S_ISR_ENABLE(in_suc_eof);
     I2SX.in_link.start = 1;
 }
+// no triggered start
 void logic_analyzer_ll_start()
 {
     I2SX.conf.rx_start = 1;                        // enable  transfer
     gpio_matrix_in(0x38, I2SXI_V_SYNC_IDX, false); // start transfer
 }
+// set triggers -> wait trigger event to start
 void logic_analyzer_ll_triggered_start(int pin_trigger, int trigger_edge)
 {
     I2SX.conf.rx_start = 1; // enable transfer
-#ifdef CONFIG_ESP_SYSTEM_CHECK_INT_LEVEL_4
+#ifdef CONFIG_ANALYZER_USE_HI_LEVEL_INTERRUPT
     ll_hi_level_triggered_isr_start(pin_trigger, trigger_edge);
 #else
     gpio_install_isr_service(0); // default
@@ -252,16 +244,18 @@ void logic_analyzer_ll_triggered_start(int pin_trigger, int trigger_edge)
     gpio_intr_enable(pin_trigger); // start transfer on irq
 #endif
 }
+// stop i2s,isr,dma
 void logic_analyzer_ll_stop()
 {
     I2SX.conf.rx_start = 0;
     I2S_ISR_DISABLE(in_suc_eof);
     I2SX.in_link.stop = 1;
 }
+// sample rate may be different then cfg -> get real sample rate
 int logic_analyzer_ll_get_sample_rate(int sample_rate)
 {
     div_68_t ldiv = logic_analyzer_ll_convert_sample_rate(sample_rate);
-    return LA_CLK_SAMPLE_RATE / (ldiv.div_6 * ldiv.div_8);
+    return LA_HW_CLK_SAMPLE_RATE / (ldiv.div_6 * ldiv.div_8);
 }
 esp_err_t logic_analyzer_ll_init_dma_eof_isr(TaskHandle_t task)
 {
