@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+
 #include "driver/rmt.h"
 #include "driver/gpio.h"
 #include "hal/rmt_ll.h"
@@ -29,6 +30,16 @@ static const char *TAG = "RMT 257*32";
 #define RMT_RX_HSYNC_CHANNEL 4
 
 TaskHandle_t rmt_task_handle = NULL;
+
+#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP-SOC_RMT_TX_CANDIDATES_PER_GROUP)
+#define RMT_TX_CHANNEL_ENCODING_END   (SOC_RMT_TX_CANDIDATES_PER_GROUP-1)
+
+#define RMT_IS_RX_CHANNEL(channel) ((channel) >= RMT_RX_CHANNEL_ENCODING_START)
+#define RMT_IS_TX_CHANNEL(channel) ((channel) <= RMT_TX_CHANNEL_ENCODING_END)
+#define RMT_DECODE_RX_CHANNEL(encode_chan) ((encode_chan - RMT_RX_CHANNEL_ENCODING_START))
+#define RMT_ENCODE_RX_CHANNEL(decode_chan) ((decode_chan + RMT_RX_CHANNEL_ENCODING_START))
+
+
 /*
 debug pin
 */
@@ -102,8 +113,34 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         dir++;
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
-}
+    status = rmt_ll_rx_get_interrupt_status(&RMT, RMT_RX_HSYNC_CHANNEL);
+    if (status /*& RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL)*/) // end of frame
+    {
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL), false);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL));
+        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
+    }
+
+        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+
+    status = RMT.int_st.val;
+    RMT.int_clr.val = status;
+
+}
+static void rmt_local_rx_start()
+{
+    rmt_ll_rx_enable(&RMT, RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL), false);
+    rmt_ll_rx_reset_pointer(&RMT, RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL));
+    rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_RX_DONE(RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL)));
+    rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_RX_DONE(RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL)), true);
+    rmt_ll_rx_enable(&RMT, RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL), true);
+
+}
 static void rmt_rx_init()
 {
     rmt_config_t rmt_rx_config = RMT_DEFAULT_CONFIG_RX(RMT_RX_GPIO_HSYNC, RMT_RX_HSYNC_CHANNEL);
@@ -111,6 +148,7 @@ static void rmt_rx_init()
     rmt_rx_config.rx_config.filter_en = false;
     rmt_rx_config.mem_block_num = 1;
     rmt_rx_config.rx_config.filter_ticks_thresh = 2;
+    rmt_rx_config.rx_config.idle_threshold = 200;
     rmt_config(&rmt_rx_config);
 }
 /*
@@ -138,12 +176,20 @@ static void rmt_init(void *p)
 
     rmt_fill_tx_items(RMT_TX_PIXEL_CHANNEL, pix_sample, sizeof(pix_sample) / sizeof(pix_sample[0]), 0);
     rmt_tx_start(RMT_TX_PIXEL_CHANNEL, true);
+
+    rmt_local_rx_start();
     // register rmt irq
     rmt_isr_register(fn_tx_isr, NULL, ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LOWMED, NULL);
 
     while (1)
     {
         gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & x_lvl++); // debug
+
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL), false);
+        rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL));
+        rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_RX_DONE(RMT_RX_HSYNC_CHANNEL), true);
+        rmt_local_rx_start();
+
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), false);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
@@ -162,6 +208,7 @@ void rmt_task(void *p)
         // TX interrupt
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);               // irq eof
         gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & x_lvl++); // debug
+
     }
 }
 
