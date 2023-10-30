@@ -93,7 +93,6 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), false);
         rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL));
         vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
-        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
         gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         // output enable flip/flop
         if (dir & 1)
@@ -101,10 +100,8 @@ void IRAM_ATTR fn_tx_isr(void *arg)
         else
             REG_WRITE(GPIO_ENABLE_W1TC_REG, 1ULL << RMT_TX_GPIO_PIXEL); // disable output
         dir++;
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
-
-    //    uint32_t  status1 = RMT.int_st.val;
-    //    RMT.int_clr.val = status1;
 }
 
 static void rmt_rx_init()
