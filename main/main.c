@@ -32,14 +32,13 @@ static const char *TAG = "RMT 257*32";
 
 TaskHandle_t rmt_task_handle = NULL;
 
-#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP-SOC_RMT_TX_CANDIDATES_PER_GROUP)
-#define RMT_TX_CHANNEL_ENCODING_END   (SOC_RMT_TX_CANDIDATES_PER_GROUP-1)
+#define RMT_RX_CHANNEL_ENCODING_START (SOC_RMT_CHANNELS_PER_GROUP - SOC_RMT_TX_CANDIDATES_PER_GROUP)
+#define RMT_TX_CHANNEL_ENCODING_END (SOC_RMT_TX_CANDIDATES_PER_GROUP - 1)
 
 #define RMT_IS_RX_CHANNEL(channel) ((channel) >= RMT_RX_CHANNEL_ENCODING_START)
 #define RMT_IS_TX_CHANNEL(channel) ((channel) <= RMT_TX_CHANNEL_ENCODING_END)
 #define RMT_DECODE_RX_CHANNEL(encode_chan) ((encode_chan - RMT_RX_CHANNEL_ENCODING_START))
 #define RMT_ENCODE_RX_CHANNEL(decode_chan) ((decode_chan + RMT_RX_CHANNEL_ENCODING_START))
-
 
 /*
 debug pin
@@ -97,44 +96,40 @@ int dir = 0;
 // main irq handler
 void IRAM_ATTR fn_tx_isr(void *arg)
 {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    static int lvl = 0; // debug
+    //    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    //    static int lvl = 0; // debug
 
-    uint32_t irq_stat = RMT.int_st.val;
-    if(RMT.int_st.ch0_tx_end_int_st)
+    //    uint32_t irq_stat = RMT.int_st.val;
+    if (RMT.int_st.ch0_tx_end_int_st)
     {
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        //        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1);
+
         RMT.int_ena.ch0_tx_end_int_ena = 0;
         RMT.int_clr.ch0_tx_end_int_clr = 1;
-        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        //        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
+        //        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
         // output enable flip/flop
-        //if (dir & 1)
+        // if (dir & 1)
         //    REG_WRITE(GPIO_ENABLE_W1TS_REG, 1ULL << RMT_TX_GPIO_PIXEL); // enable output
-        //else
+        // else
         //    REG_WRITE(GPIO_ENABLE_W1TC_REG, 1ULL << RMT_TX_GPIO_PIXEL); // disable output
-        //dir++;
-        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-        return;
+        // dir++;
+        //        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        //    return;
     }
-    if(RMT.int_st.ch4_rx_end_int_st)
+    if (RMT.int_st.ch4_rx_end_int_st)
     {
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        //        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 0);
+
         RMT.int_ena.ch4_rx_end_int_ena = 0;
         RMT.int_clr.ch4_rx_end_int_clr = 1;
-        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
-        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
-        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-        return;
+        //        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
+        //        gpio_ll_set_level(&GPIO, IRQ_DBG_GPIO, 1 & lvl++);
+        //        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        //    return;
     }
-
-//        vTaskNotifyGiveFromISR(rmt_task_handle, &xHigherPriorityTaskWoken);
-//    xQueueSendFromISR(dbg_q,&irq_stat,&xHigherPriorityTaskWoken);
-//    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-
-//    status = RMT.int_st.val;
-//    RMT.int_clr.val = irq_stat;
-
 }
 static void rmt_local_rx_start()
 {
@@ -143,7 +138,6 @@ static void rmt_local_rx_start()
     rmt_ll_clear_interrupt_status(&RMT, RMT_LL_EVENT_RX_DONE(RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL)));
     rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_RX_DONE(RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL)), true);
     rmt_ll_rx_enable(&RMT, RMT_DECODE_RX_CHANNEL(RMT_RX_HSYNC_CHANNEL), true);
-
 }
 static void rmt_rx_init()
 {
@@ -199,7 +193,7 @@ static void rmt_init(void *p)
         rmt_ll_enable_interrupt(&RMT, RMT_LL_EVENT_TX_DONE(RMT_TX_PIXEL_CHANNEL), true);
         rmt_tx_start(RMT_TX_PIXEL_CHANNEL, true);
 
-        //ESP_LOGI("---","---");
+        // ESP_LOGI("---","---");
         vTaskDelay(1);
     }
 }
@@ -211,9 +205,8 @@ void rmt_task(void *p)
     while (1)
     {
         // TX interrupt
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);               // irq eof
-        //gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & x_lvl++); // debug
-
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // irq eof
+        // gpio_ll_set_level(&GPIO, START_DBG_GPIO, 1 & x_lvl++); // debug
     }
 }
 
@@ -228,13 +221,13 @@ void app_main(void)
     gpio_reset_pin(START_DBG_GPIO);
     gpio_set_direction(START_DBG_GPIO, GPIO_MODE_OUTPUT);
 
-    dbg_q =  xQueueCreate(20,sizeof(uint32_t));
+    dbg_q = xQueueCreate(20, sizeof(uint32_t));
     uint32_t irq_stat;
 
     xTaskCreatePinnedToCore(rmt_task, "rmt task", 4000, NULL, 5, &rmt_task_handle, tskNO_AFFINITY);
-    while(1)
+    while (1)
     {
-        xQueueReceive(dbg_q,&irq_stat,portMAX_DELAY);
-        ESP_LOGI("ST","ST=%lx",irq_stat);
+        xQueueReceive(dbg_q, &irq_stat, portMAX_DELAY);
+        ESP_LOGI("ST", "ST=%lx", irq_stat);
     }
 }
